@@ -41,36 +41,33 @@ Any number of `[INVERTERx]` sections is supported; the suffix doesn't need to be
 
 ### Installation
 
+Venus OS/GX devices don't ship `git` by default, so installation is a single paste - no cloning, no submodules to init by hand.
+
 1. You need root access to your GX Device (https://www.victronenergy.com/live/ccgx:root_access)
 
-2. Clone this repository into `/data`:
+2. SSH into the GX device and paste:
 
    ```
-   git clone --recurse-submodules https://github.com/lucienkerl/dbus-kaco_blueplanet /data/dbus-kaco_blueplanet
+   wget -qO- https://raw.githubusercontent.com/lucienkerl/dbus-kaco_blueplanet/main/install.sh | bash
    ```
 
-3. Run the installer:
+   This downloads the driver and `velib_python` (both as plain tarballs over HTTPS, no `git` involved), installs them to `/data/dbus-kaco_blueplanet`, creates `config.ini` from the template (if it doesn't exist yet), sets file permissions, and registers the service for autostart, including across firmware updates.
 
-   ```
-   /data/dbus-kaco_blueplanet/install.sh
-   ```
-
-   This creates `config.ini` from the template (if it doesn't exist yet), sets file permissions, and registers the service for autostart, including across firmware updates.
-
-4. Edit `/data/dbus-kaco_blueplanet/config.ini` with your inverters' IP address, port, position, and display name, then re-run `install.sh` (or `kill_me.sh`) to restart the service with the new configuration.
+3. Edit `/data/dbus-kaco_blueplanet/config.ini` with your inverters' IP address, port, position, and display name, then run `/data/dbus-kaco_blueplanet/kill_me.sh` to restart the service with the new configuration.
 
 The supervisor should automatically start this service within seconds, if not simply reboot your system.
 
 ### Upgrading
 
+Re-paste the exact same command from step 2 above:
+
 ```
-cd /data/dbus-kaco_blueplanet
-git pull
-git submodule update --init --recursive
-./install.sh
+wget -qO- https://raw.githubusercontent.com/lucienkerl/dbus-kaco_blueplanet/main/install.sh | bash
 ```
 
-Your `config.ini` is preserved across upgrades.
+It always fetches the latest `main` branch and replaces the installed code, but your `config.ini` is preserved across upgrades.
+
+If you already have a checkout on the device, `/data/dbus-kaco_blueplanet/install.sh` does the same thing and can be run directly instead.
 
 ### Debugging
 
