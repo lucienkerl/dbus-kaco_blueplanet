@@ -30,7 +30,7 @@ class FakeModbusClient:
 
 
 class FailingModbusClient:
-    def __init__(self, host, port):
+    def __init__(self, host, port, **kwargs):
         self.auto_open = False
 
     def is_socket_open(self):
@@ -41,10 +41,13 @@ class FailingModbusClient:
 
 
 class FakeVeDbusService:
-    def __init__(self, service_name, dbus_conn):
+    def __init__(self, service_name, dbus_conn, register=None):
         self.service_name = service_name
         self.dbus_conn = dbus_conn
+        self.register_requested = register
         self.paths = {}
+        self.registered = False
+        self.deleted = False
 
     def add_path(self, path, value, **kwargs):
         self.paths[path] = value
@@ -52,12 +55,18 @@ class FakeVeDbusService:
     def __setitem__(self, path, value):
         self.paths[path] = value
 
+    def register(self):
+        self.registered = True
+
+    def __del__(self):
+        self.deleted = True
+
 
 def make_fake_vedbus_factory():
     created = []
 
-    def factory(service_name, dbus_conn):
-        service = FakeVeDbusService(service_name, dbus_conn)
+    def factory(service_name, dbus_conn, register=None):
+        service = FakeVeDbusService(service_name, dbus_conn, register=register)
         created.append(service)
         return service
 
@@ -92,7 +101,7 @@ def test_create_wires_config_into_pv_and_temp_services():
 
     device = KacoInverterDevice.create(
         make_config(), dbus_conn=object(),
-        modbus_client_factory=lambda host, port: modbus_client,
+        modbus_client_factory=lambda host, port, **kwargs: modbus_client,
         vedbus_service_factory=vedbus_factory,
         instance_allocator=fake_allocator,
         instance_offset=1,
@@ -120,12 +129,41 @@ def test_create_wires_config_into_pv_and_temp_services():
     assert device.pv_service is pv_service
     assert device.temp_service is temp_service
 
+    assert pv_service.register_requested is False
+    assert pv_service.registered is True
+    assert temp_service.registered is True
+
 
 def test_create_raises_when_modbus_connect_fails():
     with pytest.raises(ConnectionError):
         KacoInverterDevice.create(
             make_config(), dbus_conn=object(),
-            modbus_client_factory=lambda host, port: FailingModbusClient(host, port),
+            modbus_client_factory=lambda host, port, **kwargs: FailingModbusClient(host, port),
             vedbus_service_factory=make_fake_vedbus_factory(),
             instance_allocator=lambda *a, **k: 20,
         )
+
+
+def test_create_cleans_up_pv_service_when_temp_service_registration_fails():
+    modbus_client = FakeModbusClient('192.168.1.50', 502, static_registers=make_static_registers())
+    created = []
+
+    def vedbus_factory(service_name, dbus_conn, register=None):
+        service = FakeVeDbusService(service_name, dbus_conn, register=register)
+        if 'temperature' in service_name:
+            def failing_register():
+                raise RuntimeError("simulated registration failure")
+            service.register = failing_register
+        created.append(service)
+        return service
+
+    with pytest.raises(RuntimeError):
+        KacoInverterDevice.create(
+            make_config(), dbus_conn=object(),
+            modbus_client_factory=lambda host, port, **kwargs: modbus_client,
+            vedbus_service_factory=vedbus_factory,
+            instance_allocator=lambda *a, **k: 20,
+        )
+
+    pv_service, temp_service = created
+    assert pv_service.deleted is True

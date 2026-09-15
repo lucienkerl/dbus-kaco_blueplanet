@@ -4,8 +4,8 @@ from kaco_instance import allocate_device_instance
 def test_allocate_device_instance_requests_expected_setting_and_parses_result():
     calls = []
 
-    def fake_settings_device_factory(dbus_conn, supported_settings, eventCallback=None):
-        calls.append((dbus_conn, supported_settings, eventCallback))
+    def fake_settings_device_factory(dbus_conn, supported_settings, eventCallback=None, timeout=0):
+        calls.append((dbus_conn, supported_settings, eventCallback, timeout))
         path, default_value, _min, _max = supported_settings['instance']
         # simulate Venus OS resolving a conflict to a different instance
         resolved_value = default_value.rsplit(':', 1)[0] + ':34'
@@ -17,16 +17,17 @@ def test_allocate_device_instance_requests_expected_setting_and_parses_result():
     )
 
     assert result == 34
-    dbus_conn, supported_settings, event_cb = calls[0]
+    dbus_conn, supported_settings, event_cb, timeout = calls[0]
     assert dbus_conn == 'fake-bus'
     assert supported_settings == {
         'instance': ['/Settings/Devices/kaco_1/ClassAndVrmInstance', 'pvinverter:20', 0, 0],
     }
     assert event_cb is None
+    assert calls[0][3] == 10
 
 
 def test_allocate_device_instance_uses_requested_default_when_not_taken():
-    def fake_settings_device_factory(dbus_conn, supported_settings, eventCallback=None):
+    def fake_settings_device_factory(dbus_conn, supported_settings, eventCallback=None, timeout=0):
         path, default_value, _min, _max = supported_settings['instance']
         return {'instance': default_value}
 

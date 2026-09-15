@@ -94,4 +94,25 @@ def test_update_marks_disconnected_on_modbus_error():
 
     assert pv_service['/Connected'] == 0
     assert temp_service['/Connected'] == 0
-    assert '/Ac/Power' not in pv_service
+    assert pv_service['/Ac/Power'] is None
+
+
+def test_update_clears_stale_measurements_after_prior_success_then_failure():
+    pv_service = FakeService()
+    temp_service = FakeService()
+    device = KacoInverterDevice(
+        make_config(), pv_service, temp_service,
+        FakeModbusClient(registers=make_update_registers()),
+    )
+    device.update()
+    assert pv_service['/Ac/Power'] == 5000  # sanity: first update succeeded
+
+    device.modbus_client = FakeModbusClient(registers=[0] * 50, error=True)
+    device.update()
+
+    assert pv_service['/Connected'] == 0
+    assert pv_service['/Ac/Power'] is None
+    assert pv_service['/Ac/L1/Voltage'] is None
+    assert pv_service['/StatusCode'] is None
+    assert temp_service['/Connected'] == 0
+    assert temp_service['/Temperature'] is None

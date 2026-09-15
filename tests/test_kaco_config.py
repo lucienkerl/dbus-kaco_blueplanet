@@ -106,3 +106,79 @@ custom_name = Kaco One
 """)
     with pytest.raises(ConfigError, match="invalid position"):
         load_inverter_configs(path)
+
+
+def test_missing_port_raises_configerror(tmp_path):
+    path = write_config(tmp_path, """
+[INVERTER1]
+name = kaco_1
+host = 192.168.1.10
+unit = 2
+position = ac-in
+custom_name = Kaco One
+""")
+    with pytest.raises(ConfigError, match="port"):
+        load_inverter_configs(path)
+
+
+def test_missing_unit_raises_configerror(tmp_path):
+    path = write_config(tmp_path, """
+[INVERTER1]
+name = kaco_1
+host = 192.168.1.10
+port = 502
+position = ac-in
+custom_name = Kaco One
+""")
+    with pytest.raises(ConfigError, match="unit"):
+        load_inverter_configs(path)
+
+
+def test_non_numeric_port_raises_configerror(tmp_path):
+    path = write_config(tmp_path, """
+[INVERTER1]
+name = kaco_1
+host = 192.168.1.10
+port = abc
+unit = 2
+position = ac-in
+custom_name = Kaco One
+""")
+    with pytest.raises(ConfigError):
+        load_inverter_configs(path)
+
+
+def test_invalid_name_charset_raises_configerror(tmp_path):
+    path = write_config(tmp_path, """
+[INVERTER1]
+name = kaco 1
+host = 192.168.1.10
+port = 502
+unit = 2
+position = ac-in
+custom_name = Kaco One
+""")
+    with pytest.raises(ConfigError, match="invalid name"):
+        load_inverter_configs(path)
+
+
+def test_duplicate_name_raises_configerror(tmp_path):
+    path = write_config(tmp_path, """
+[INVERTER1]
+name = kaco_1
+host = 192.168.1.10
+port = 502
+unit = 2
+position = ac-in
+custom_name = Kaco One
+
+[INVERTER2]
+name = kaco_1
+host = 192.168.1.11
+port = 502
+unit = 3
+position = ac-out
+custom_name = Kaco Two
+""")
+    with pytest.raises(ConfigError, match="Duplicate"):
+        load_inverter_configs(path)

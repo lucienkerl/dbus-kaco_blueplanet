@@ -16,12 +16,21 @@ VERSION = "0.1"
 PRODUCT_ID_PVINVERTER = 41284  # value used in ac_sensor_bridge.cpp of dbus-cgwacs
 DEFAULT_PV_INSTANCE_BASE = 20
 DEFAULT_TEMP_INSTANCE_BASE = 26
+MODBUS_TIMEOUT_SECONDS = 2
 
 _KWH = lambda p, v: (str(v) + 'kWh')
 _A = lambda p, v: (str(v) + 'A')
 _W = lambda p, v: (str(v) + 'W')
 _V = lambda p, v: (str(v) + 'V')
 _C = lambda p, v: (str(v) + 'C')
+
+_STALE_ON_DISCONNECT_PATHS = (
+    '/Ac/Power',
+    '/Ac/L1/Power', '/Ac/L2/Power', '/Ac/L3/Power',
+    '/Ac/Current', '/Ac/L1/Current', '/Ac/L2/Current', '/Ac/L3/Current',
+    '/Ac/L1/Voltage', '/Ac/L2/Voltage', '/Ac/L3/Voltage',
+    '/StatusCode', '/ErrorCode',
+)
 
 
 class ModbusReadError(Exception):
@@ -55,7 +64,8 @@ class KacoInverterDevice:
             from vedbus import VeDbusService
             vedbus_service_factory = VeDbusService
 
-        modbus_client = modbus_client_factory(config.host, port=config.port)
+        modbus_client = modbus_client_factory(
+            config.host, port=config.port, timeout=MODBUS_TIMEOUT_SECONDS)
         modbus_client.auto_open = True
         if not modbus_client.is_socket_open() and not modbus_client.connect():
             raise ConnectionError(
@@ -80,7 +90,7 @@ class KacoInverterDevice:
         )
 
         pv_service = vedbus_service_factory(
-            'com.victronenergy.pvinverter.{}'.format(config.name), dbus_conn)
+            'com.victronenergy.pvinverter.{}'.format(config.name), dbus_conn, register=False)
         cls._add_management_paths(pv_service)
         pv_service.add_path('/DeviceInstance', pv_instance)
         pv_service.add_path('/FirmwareVersion', firmware_version)
@@ -111,7 +121,7 @@ class KacoInverterDevice:
         pv_service.add_path('/StatusCode', None)
 
         temp_service = vedbus_service_factory(
-            'com.victronenergy.temperature.{}_temp'.format(config.name), dbus_conn)
+            'com.victronenergy.temperature.{}_temp'.format(config.name), dbus_conn, register=False)
         cls._add_management_paths(temp_service)
         temp_service.add_path('/DeviceInstance', temp_instance)
         temp_service.add_path('/FirmwareVersion', firmware_version)
@@ -124,6 +134,14 @@ class KacoInverterDevice:
         temp_service.add_path('/Temperature', None, gettextcallback=_C)
         temp_service.add_path('/Status', 0)
         temp_service.add_path('/TemperatureType', 0, writeable=True)
+
+        try:
+            pv_service.register()
+            temp_service.register()
+        except Exception:
+            pv_service.__del__()
+            temp_service.__del__()
+            raise
 
         return cls(config, pv_service, temp_service, modbus_client)
 
@@ -145,7 +163,10 @@ class KacoInverterDevice:
         except Exception as exc:
             log.error("inverter '%s': update failed: %s", self.config.name, exc)
             self.pv_service['/Connected'] = 0
+            for path in _STALE_ON_DISCONNECT_PATHS:
+                self.pv_service[path] = None
             self.temp_service['/Connected'] = 0
+            self.temp_service['/Temperature'] = None
 
     def _apply_registers(self, registers):
         sf = scale_factor(registers[4])

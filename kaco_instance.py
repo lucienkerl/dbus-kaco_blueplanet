@@ -24,6 +24,7 @@ def allocate_device_instance(dbus_conn, name, default_instance,
         dbus_conn,
         {'instance': [setting_path, default_value, 0, 0]},
         eventCallback=None,
+        timeout=10,
     )
 
     stored_value = settings['instance']
