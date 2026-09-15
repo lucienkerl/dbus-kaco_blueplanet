@@ -88,7 +88,7 @@ You could also take a look at the log-file:
 
 `tail -f /var/log/dbus-kaco_blueplanet/current`
 
-and see if there are any error messages. A single inverter being unreachable no longer stops the whole service — the affected inverter's D-Bus services report `/Connected = 0` and it keeps retrying every cycle, while the other configured inverters keep updating normally.
+and see if there are any error messages. A single inverter being unreachable no longer stops the whole service — the affected inverter's D-Bus services report `/Connected = 0` and it keeps retrying every cycle, while the other configured inverters keep updating normally. If an inverter is offline when the service *starts* (e.g. a GX device reboot at night, when Kaco inverters have powered off), it's queued and retried automatically every 60 seconds until it comes back online — no manual restart needed, and the service won't exit or crash-loop just because every inverter happens to be offline at boot.
 
 When you think that the script crashes, start it directly from the command line:
 
