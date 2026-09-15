@@ -19,7 +19,7 @@ Configuration lives in `config.ini` (created automatically from `config.default.
 name = kaco_1
 host = 192.168.178.80
 port = 502
-unit = 2
+unit = 1
 position = ac-in
 custom_name = Kaco Blueplanet 10.0 TL3
 
@@ -27,7 +27,7 @@ custom_name = Kaco Blueplanet 10.0 TL3
 name = kaco_2
 host = 192.168.178.81
 port = 502
-unit = 2
+unit = 1
 position = ac-in
 custom_name = Kaco Blueplanet 8.6 TL3
 ```
