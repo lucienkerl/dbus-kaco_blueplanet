@@ -74,6 +74,18 @@ def make_fake_vedbus_factory():
     return factory
 
 
+def make_fake_dbus_connection_factory():
+    created = []
+
+    def factory():
+        connection = object()
+        created.append(connection)
+        return connection
+
+    factory.created = created
+    return factory
+
+
 def make_config():
     return InverterConfig(
         name='kaco_1', host='192.168.1.50', port=502, unit=2,
@@ -99,11 +111,14 @@ def test_create_wires_config_into_pv_and_temp_services():
         instance_calls.append((name, default_instance, service_type))
         return default_instance
 
+    connection_factory = make_fake_dbus_connection_factory()
+
     device = KacoInverterDevice.create(
         make_config(), dbus_conn=object(),
         modbus_client_factory=lambda host, port, **kwargs: modbus_client,
         vedbus_service_factory=vedbus_factory,
         instance_allocator=fake_allocator,
+        dbus_connection_factory=connection_factory,
         instance_offset=1,
     )
 
@@ -133,6 +148,14 @@ def test_create_wires_config_into_pv_and_temp_services():
     assert pv_service.registered is True
     assert temp_service.registered is True
 
+    # Root-cause regression check: each VeDbusService must get its OWN
+    # connection. dbus-python registers the mandatory '/' object export
+    # per-Connection, so sharing one connection across both services makes
+    # the second VeDbusService construction fail with "Can't register the
+    # object-path handler for '/': there is already a handler".
+    assert len(connection_factory.created) == 2
+    assert pv_service.dbus_conn is not temp_service.dbus_conn
+
 
 def test_create_raises_when_modbus_connect_fails():
     with pytest.raises(ConnectionError):
@@ -141,6 +164,7 @@ def test_create_raises_when_modbus_connect_fails():
             modbus_client_factory=lambda host, port, **kwargs: FailingModbusClient(host, port),
             vedbus_service_factory=make_fake_vedbus_factory(),
             instance_allocator=lambda *a, **k: 20,
+            dbus_connection_factory=make_fake_dbus_connection_factory(),
         )
 
 
@@ -163,6 +187,7 @@ def test_create_cleans_up_pv_service_when_temp_service_registration_fails():
             modbus_client_factory=lambda host, port, **kwargs: modbus_client,
             vedbus_service_factory=vedbus_factory,
             instance_allocator=lambda *a, **k: 20,
+            dbus_connection_factory=make_fake_dbus_connection_factory(),
         )
 
     pv_service, temp_service = created

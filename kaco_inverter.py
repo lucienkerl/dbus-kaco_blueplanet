@@ -56,13 +56,16 @@ class KacoInverterDevice:
     @classmethod
     def create(cls, config, dbus_conn, modbus_client_factory=None,
                vedbus_service_factory=None, instance_allocator=allocate_device_instance,
-               instance_offset=0):
+               dbus_connection_factory=None, instance_offset=0):
         if modbus_client_factory is None:
             from pymodbus.client.sync import ModbusTcpClient
             modbus_client_factory = ModbusTcpClient
         if vedbus_service_factory is None:
             from vedbus import VeDbusService
             vedbus_service_factory = VeDbusService
+        if dbus_connection_factory is None:
+            from kaco_dbus import new_dbus_connection
+            dbus_connection_factory = new_dbus_connection
 
         modbus_client = modbus_client_factory(
             config.host, port=config.port, timeout=MODBUS_TIMEOUT_SECONDS)
@@ -89,8 +92,12 @@ class KacoInverterDevice:
             service_type='temperature',
         )
 
+        # Each VeDbusService must get its own, separate connection: dbus-python
+        # registers the mandatory '/' object export per-Connection, so two
+        # services sharing one connection collide on the second registration.
         pv_service = vedbus_service_factory(
-            'com.victronenergy.pvinverter.{}'.format(config.name), dbus_conn, register=False)
+            'com.victronenergy.pvinverter.{}'.format(config.name),
+            dbus_connection_factory(), register=False)
         cls._add_management_paths(pv_service)
         pv_service.add_path('/DeviceInstance', pv_instance)
         pv_service.add_path('/FirmwareVersion', firmware_version)
@@ -121,7 +128,8 @@ class KacoInverterDevice:
         pv_service.add_path('/StatusCode', None)
 
         temp_service = vedbus_service_factory(
-            'com.victronenergy.temperature.{}_temp'.format(config.name), dbus_conn, register=False)
+            'com.victronenergy.temperature.{}_temp'.format(config.name),
+            dbus_connection_factory(), register=False)
         cls._add_management_paths(temp_service)
         temp_service.add_path('/DeviceInstance', temp_instance)
         temp_service.add_path('/FirmwareVersion', firmware_version)
