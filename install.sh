@@ -95,7 +95,7 @@ if pgrep -f "python ${DRIVER_DIR}/dbus-kaco_blueplanet.py" > /dev/null 2>&1; the
 fi
 
 echo
-echo "Done. The supervisor will (re)start ${REPO_NAME} within a few seconds."
+echo "Done. The supervisor should (re)start ${REPO_NAME} within a few seconds - if not, reboot the GX device."
 echo "If this is a first-time install, edit ${DRIVER_DIR}/config.ini now, then run"
 echo "  ${DRIVER_DIR}/kill_me.sh"
 echo "to restart the service with the new configuration."

@@ -69,6 +69,12 @@ It always fetches the latest `main` branch and replaces the installed code, but 
 
 If you already have a checkout on the device, `/data/dbus-kaco_blueplanet/install.sh` does the same thing and can be run directly instead.
 
+**Coming from the old single-inverter version of this driver?** A few one-time things to know:
+
+- It's safe to just run the install command above - it replaces whatever is at `/data/dbus-kaco_blueplanet` (including an old manual copy of the 4 original files) with the current multi-inverter driver, and creates `config.ini` for you to fill in.
+- If you'd followed the old README's optional tip to add a symlink line to `/data/rc.local` by hand, you can remove that old `ln -s /data/dbus-kaco_blueplanet/service/ ...` line - `install.sh` now manages its own line there. Leaving the old one in place is harmless (it just fails silently at boot once the symlink already exists), but it's dead weight.
+- The D-Bus service name changes from the old fixed `com.victronenergy.pvinverter.pv0` (device instance 20) to `com.victronenergy.pvinverter.<name>` per `config.ini` section, with the device instance now auto-allocated. Venus OS/VRM will treat this as a new device - your existing PV history under the old service name won't carry over.
+
 ### Debugging
 
 You can check the status of the service with svstat:

@@ -14,9 +14,16 @@ log = logging.getLogger("DbusKaco")
 
 VERSION = "0.1"
 PRODUCT_ID_PVINVERTER = 41284  # value used in ac_sensor_bridge.cpp of dbus-cgwacs
+# Proposed defaults only - allocate_device_instance() resolves the actual
+# instance against Venus OS's settings service, which avoids collisions with
+# any other device (including between these two constants themselves, since
+# pvinverter and temperature are different device classes).
 DEFAULT_PV_INSTANCE_BASE = 20
 DEFAULT_TEMP_INSTANCE_BASE = 26
 MODBUS_TIMEOUT_SECONDS = 2
+# Reported on /Mgmt/ProcessName - the actual invoked script (see service/run),
+# not this module's own filename.
+ENTRY_POINT = 'dbus-kaco_blueplanet.py'
 
 _KWH = lambda p, v: (str(v) + 'kWh')
 _A = lambda p, v: (str(v) + 'A')
@@ -69,6 +76,9 @@ class KacoInverterDevice:
 
         modbus_client = modbus_client_factory(
             config.host, port=config.port, timeout=MODBUS_TIMEOUT_SECONDS)
+        # auto_open is a pyModbusTCP attribute, not pymodbus - harmless but a
+        # no-op here. pymodbus reconnects on its own inside execute()/
+        # read_holding_registers(), so nothing else is needed for that.
         modbus_client.auto_open = True
         if not modbus_client.is_socket_open() and not modbus_client.connect():
             raise ConnectionError(
@@ -156,7 +166,7 @@ class KacoInverterDevice:
     @staticmethod
     def _add_management_paths(service):
         import platform
-        service.add_path('/Mgmt/ProcessName', __file__)
+        service.add_path('/Mgmt/ProcessName', ENTRY_POINT)
         service.add_path(
             '/Mgmt/ProcessVersion',
             'Unknown version, and running on Python ' + platform.python_version(),
