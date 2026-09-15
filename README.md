@@ -5,56 +5,72 @@ Victron Venus integration for Kaco blueplanet 3.0 TL3 - 10 TL3 Inverters
 
 This service is meant to be run on a raspberry Pi with Venus OS from Victron or a for example a Cerbo GX device.
 
-The Python script cyclically reads data from the Kaco blueplanet Inverter via Sunspec Modbus and publishes information on the dbus, using the services com.victronenergy.grid, com.victronenergy.pvinverter.pv0, com.victronenergy.temperature, com.victronenergy.digitalinput. This makes the Venus OS work as if you had a physical Victron Grid Meter installed and gives all information about PV Intervter load, temperature and if the inverter is in limit mode.
+The Python script cyclically reads data from one or more Kaco blueplanet Inverters via Sunspec Modbus and publishes information on the dbus, using per-inverter services `com.victronenergy.pvinverter.<name>` and `com.victronenergy.temperature.<name>_temp`. This makes the Venus OS work as if you had one or more physical Victron PV inverters installed, giving information about PV inverter load, temperature, and AC position (grid-side / load-side) for each configured inverter.
 
 ![Dashboard shows Energy flow](images/dashboard.png?raw=true "Dashboard")
 ![Menu shows Entries of the Inverter](images/menu.png?raw=true "Menu")
 
 ### Configuration
 
-You need to modify the settings in the dbus-kaco_blueplanet.py as needed:
+Configuration lives in `config.ini` (created automatically from `config.default.ini` on first install, never overwritten by later updates). Add one `[INVERTERx]` section per physical inverter:
 
-`SERVER_HOST = "192.168.178.80"`
+```ini
+[INVERTER1]
+name = kaco_1
+host = 192.168.178.80
+port = 502
+unit = 2
+position = ac-in
+custom_name = Kaco Blueplanet 10.0 TL3
 
-`SERVER_PORT = 502`
+[INVERTER2]
+name = kaco_2
+host = 192.168.178.81
+port = 502
+unit = 2
+position = ac-in
+custom_name = Kaco Blueplanet 8.6 TL3
+```
 
-`UNIT = 2`
+- `name`: short, unique, stable identifier. Used to build the D-Bus service name and the persisted device-instance mapping. Don't change it after the first start.
+- `host` / `port` / `unit`: this inverter's Modbus TCP address, port, and unit/slave ID.
+- `position`: `ac-in` (feeds in before the grid connection point) or `ac-out` (feeds in after it).
+- `custom_name`: display name shown in the Venus OS device list.
+
+Any number of `[INVERTERx]` sections is supported; the suffix doesn't need to be sequential.
 
 ### Installation
 
 1. You need root access to your GX Device (https://www.victronenergy.com/live/ccgx:root_access)
 
-2. Copy the files to the /data folder on your venus:
+2. Clone this repository into `/data`:
 
-   - /data/dbus-kaco_blueplanet/dbus-kaco_blueplanet.py
-   - /data/dbus-kaco_blueplanet/kill_me.sh
-   - /data/dbus-kaco_blueplanet/service/run
-   - /data/dbus-kaco_blueplanet/service/log/run
+   ```
+   git clone --recurse-submodules https://github.com/lucienkerl/dbus-kaco_blueplanet /data/dbus-kaco_blueplanet
+   ```
 
-3. Set permissions for files:
+3. Run the installer:
 
-  `chmod 755 /data/dbus-kaco_blueplanet/service/run`
-  
-  `chmod 755 /data/dbus-kaco_blueplanet/service/log/run`
-  
-  `chmod 744 /data/dbus-kaco_blueplanet/kill_me.sh`
+   ```
+   /data/dbus-kaco_blueplanet/install.sh
+   ```
 
-4. Add a symlink to for auto starting:
+   This creates `config.ini` from the template (if it doesn't exist yet), sets file permissions, and registers the service for autostart, including across firmware updates.
 
-   `ln -s /data/dbus-kaco_blueplanet/service/ /opt/victronenergy/service/dbus-kaco_blueplanet`
+4. Edit `/data/dbus-kaco_blueplanet/config.ini` with your inverters' IP address, port, position, and display name, then re-run `install.sh` (or `kill_me.sh`) to restart the service with the new configuration.
 
-   The supervisor should automatically start this service within seconds, if not simply reboot your system.
+The supervisor should automatically start this service within seconds, if not simply reboot your system.
 
-### Upgrading Venus OS
+### Upgrading
 
-If you are upgrading your Venus OS you will have to re-add the symlink for autostarting the python script (Repeat step 4 from the above installation instructions).
+```
+cd /data/dbus-kaco_blueplanet
+git pull
+git submodule update --init --recursive
+./install.sh
+```
 
-To avoid having to manually do this, add
-
-`!#/bin/bash`<br>
-`ln -s /data/dbus-kaco_blueplanet/service/ /opt/victronenergy/service/dbus-kaco_blueplanet`
-
-to /data/rc.local This will execute adding the link late at every startup.
+Your `config.ini` is preserved across upgrades.
 
 ### Debugging
 
@@ -72,7 +88,7 @@ You could also take a look at the log-file:
 
 `tail -f /var/log/dbus-kaco_blueplanet/current`
 
-and see if there are any error messages.
+and see if there are any error messages. A single inverter being unreachable no longer stops the whole service — the affected inverter's D-Bus services report `/Connected = 0` and it keeps retrying every cycle, while the other configured inverters keep updating normally.
 
 When you think that the script crashes, start it directly from the command line:
 
@@ -80,32 +96,27 @@ When you think that the script crashes, start it directly from the command line:
 
 and see if it throws any error messages.
 
-If the script stops with the message
+If the script stops with a `dbus.exceptions.NameExistsException` for one of the `com.victronenergy.pvinverter.*` or `com.victronenergy.temperature.*` names, it means that the service is still running or another service is using that name — check for duplicate `name` values across your `[INVERTERx]` sections in `config.ini`.
 
-`dbus.exceptions.NameExistsException: Bus name already exists: com.victronenergy.grid"`
-
-it means that the service is still running or another service is using that bus name.
-
-If you see something like:
-
-`2022-06-05 10:39:04,238 - DbusKaco - INFO - Startup, trying connection to Modbus-Server: ModbusTCP 192.168.178.80:502, UNIT 2`
-
-`2022-06-05 10:39:04,247 - pymodbus.client.sync - ERROR - Connection to (192.168.178.80, 502) failed: [Errno 111] Connection refused`
-
-`2022-06-05 10:39:04,249 - DbusKaco - ERROR - unable to connect to 192.168.178.80:502`
-
-Then you are not able to connect to your Inverter via Modbus. This can be a misconfiguration or another client is already connected. 
-The inverter will accept only one concurrent client connected, if you need more than one client connection you may use a modbus proxy like
-https://pypi.org/project/modbus-proxy/
-
+If you see a connection error for one of your inverters' IP addresses in the log, that inverter is unreachable. This can be a misconfiguration or another client already connected. Each inverter only accepts one concurrent Modbus client; if you need more than one client connection to the same inverter, use a modbus proxy like https://pypi.org/project/modbus-proxy/
 
 #### Restart the script
 
-If you want to restart the script, for example after changing it, just run the following command:
+If you want to restart the script, for example after changing `config.ini`, just run the following command:
 
 `/data/dbus-kaco_blueplanet/kill_me.sh`
 
-The supervisor will restart the scriptwithin a few seconds.
+The supervisor will restart the script within a few seconds.
+
+### Running the tests
+
+The pure configuration/decoding/orchestration logic has a unit test suite that runs on any machine (no Venus OS, D-Bus, or Modbus hardware required):
+
+```
+python3 -m venv .venv
+.venv/bin/pip install -r requirements-dev.txt
+.venv/bin/pytest
+```
 
 ### Hardware
 
@@ -115,7 +126,7 @@ In my installation at home, I am using the following Hardware:
 - Kaco blueplanet 10.0 TL 3
 - 1x Victron MultiPlus-II - Battery Inverter (one phase)
 - Cerbo GX (tested Firmware version: v2.87 and v2.92)
-- DIY Battery 16x 280AH Lifepo EVE Cells with BMS from Batrium 
+- DIY Battery 16x 280AH Lifepo EVE Cells with BMS from Batrium
 
 ### Credits
 
