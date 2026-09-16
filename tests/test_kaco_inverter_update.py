@@ -17,9 +17,13 @@ class FakeModbusClient:
     def __init__(self, registers=None, error=False):
         self._registers = registers
         self._error = error
+        self.closed = False
 
     def read_holding_registers(self, address, count, unit):
         return FakeRegisterResult(self._registers, error=self._error)
+
+    def close(self):
+        self.closed = True
 
 
 class FakeService(dict):
@@ -85,9 +89,9 @@ def test_update_applies_decoded_values_to_both_services():
 def test_update_marks_disconnected_on_modbus_error():
     pv_service = FakeService()
     temp_service = FakeService()
+    modbus_client = FakeModbusClient(registers=[0] * 50, error=True)
     device = KacoInverterDevice(
-        make_config(), pv_service, temp_service,
-        FakeModbusClient(registers=[0] * 50, error=True),
+        make_config(), pv_service, temp_service, modbus_client,
     )
 
     device.update()
@@ -95,6 +99,27 @@ def test_update_marks_disconnected_on_modbus_error():
     assert pv_service['/Connected'] == 0
     assert temp_service['/Connected'] == 0
     assert pv_service['/Ac/Power'] is None
+
+
+def test_update_closes_modbus_client_on_read_error_to_force_reconnect():
+    # pymodbus's ModbusTcpClient.connect() treats a non-None self.socket as
+    # "connected" without checking it's still alive, so a silently-dead TCP
+    # connection is never rediscovered on its own - every read after that
+    # just times out against the same broken socket forever, and only a
+    # process restart (a brand new client with socket=None) recovers. update()
+    # must close() the client on any read failure so the *next* cycle's
+    # read_holding_registers() call goes through a real reconnect instead of
+    # reusing the stale socket.
+    pv_service = FakeService()
+    temp_service = FakeService()
+    modbus_client = FakeModbusClient(registers=[0] * 50, error=True)
+    device = KacoInverterDevice(
+        make_config(), pv_service, temp_service, modbus_client,
+    )
+
+    device.update()
+
+    assert modbus_client.closed is True
 
 
 def test_update_clears_stale_measurements_after_prior_success_then_failure():

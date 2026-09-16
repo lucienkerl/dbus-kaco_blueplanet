@@ -45,12 +45,22 @@ class ModbusReadError(Exception):
 
 
 def _read_registers(modbus_client, unit, address, count):
-    result = modbus_client.read_holding_registers(address, count, unit=unit)
-    if result.isError():
-        raise ModbusReadError(
-            "error reading {} registers at {}: {}".format(count, address, result)
-        )
-    return result.registers
+    # pymodbus's ModbusTcpClient.connect() treats a non-None self.socket as
+    # "connected" without checking it's still alive, so a silently-dead TCP
+    # connection (the inverter drops off the network without a clean close)
+    # is never rediscovered on its own - every read after that just times
+    # out against the same broken socket forever. Closing the client on any
+    # failure here forces a real reconnect attempt on the next read.
+    try:
+        result = modbus_client.read_holding_registers(address, count, unit=unit)
+        if result.isError():
+            raise ModbusReadError(
+                "error reading {} registers at {}: {}".format(count, address, result)
+            )
+        return result.registers
+    except Exception:
+        modbus_client.close()
+        raise
 
 
 class KacoInverterDevice:
@@ -76,9 +86,10 @@ class KacoInverterDevice:
 
         modbus_client = modbus_client_factory(
             config.host, port=config.port, timeout=MODBUS_TIMEOUT_SECONDS)
-        # auto_open is a pyModbusTCP attribute, not pymodbus - harmless but a
-        # no-op here. pymodbus reconnects on its own inside execute()/
-        # read_holding_registers(), so nothing else is needed for that.
+        # auto_open is a pyModbusTCP attribute, not pymodbus - a harmless
+        # no-op here. Actual reconnection after a dead connection relies on
+        # _read_registers() closing the client on failure (see above);
+        # pymodbus's own connect() does NOT do this for us.
         modbus_client.auto_open = True
         if not modbus_client.is_socket_open() and not modbus_client.connect():
             raise ConnectionError(
